@@ -25,3 +25,9 @@ npm run preview
 - 관리자 계정·운영·프롬프트·토큰 관리
 
 인증 계정별로 대화·과제·설문·문서가 백엔드에 저장됩니다. 공통 콘텐츠는 `../shared/content.json`, 화면 코드는 `src/`, 진입 HTML은 `index.html`에 있습니다. WiaCanDX 소개 페이지는 `public/wiacandx.html`, 폰트 라이선스는 `public/fonts/LICENSE.txt`에 있습니다.
+
+## 서비스 소개 페이지
+
+기본 주소 `/`에서는 소개 페이지를, `/#app`에서는 기존 로그인 및 사용자·관리자 화면을 표시합니다.
+
+영상과 가이드는 `src/introContent.js`에서 설정합니다. 파일이 준비되면 `public/media/WiaCoding_intro.mp4`, `public/guides/WiaCoding-guide.pptx` 등에 추가하고 `videoUrl`, `guideUrl`을 각각 `/media/WiaCoding_intro.mp4`, `/guides/WiaCoding-guide.pptx`로 지정합니다. `npm run build` 후 재생·다운로드가 활성화됩니다. URL이 `null`이면 준비 중으로 표시됩니다. 소개 자료는 로그인 없이 접근할 수 있습니다.

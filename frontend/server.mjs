@@ -11,7 +11,7 @@ const root = await realpath(fileURLToPath(new URL('./dist', import.meta.url)));
 const target = new URL(process.env.BACKEND_ORIGIN || 'http://127.0.0.1:9901');
 if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(target.hostname)) throw new Error('Backend must be local HTTP');
 const options = { cert: readFileSync(process.env.TLS_CERT), key: readFileSync(process.env.TLS_KEY), minVersion: 'TLSv1.2' };
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
+const mime = { '.mp4': 'video/mp4', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.ppt': 'application/vnd.ms-powerpoint', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 const hop = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 function withoutHop(headers) {
   const blocked = new Set([...hop, ...String(headers.connection || '').toLowerCase().split(',').map(value => value.trim())]);

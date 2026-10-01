@@ -37,7 +37,7 @@ function Login({ onLogin, notice }) {
   const [employee, setEmployee] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   async function submit(event) { event.preventDefault(); setError(''); setBusy(true); try { onLogin(await postAuth('/auth/login', { employee_id: employee.trim(), password })); } catch (err) { setError(err.message); } finally { setBusy(false); } }
   return <div className="auth-page"><div className="login-layout"><section className="login-intro"><Brand /><div className="login-message"><span>YOUR FIRST CODING PROMPT</span><h1>아이디어를,<br />첫 개발 프롬프트로.</h1><p>대화로 해결할 과제를 정하고<br />나에게 맞는 첫 개발 프롬프트를 완성하세요.</p></div><small>WiaCoding · 아이디어에서 개발까지.</small></section>
-    <section className="auth-card login-card"><span className="auth-icon"><LockKeyhole size={26} /></span><h2>로그인</h2><p>사번과 비밀번호로 시작하세요.</p><form onSubmit={submit}><fieldset disabled={busy}>
+    <section className="auth-card login-card"><a className="login-intro-return" href="#">← 서비스 소개</a><span className="auth-icon"><LockKeyhole size={26} /></span><h2>로그인</h2><p>사번과 비밀번호로 시작하세요.</p><form onSubmit={submit}><fieldset disabled={busy}>
       <label>사번<input autoComplete="username" autoFocus required maxLength={40} placeholder="사번을 입력하세요" value={employee} onChange={e => setEmployee(e.target.value)} /></label>
       <label>비밀번호<input type="password" autoComplete="current-password" required maxLength={128} placeholder="비밀번호를 입력하세요" value={password} onChange={e => setPassword(e.target.value)} /></label>
       {(error || notice) && <p className="auth-error" role="alert">{error || notice}</p>}
