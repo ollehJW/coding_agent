@@ -1,0 +1,1 @@
+"""WiaCoding FastAPI backend."""

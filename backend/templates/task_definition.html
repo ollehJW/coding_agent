@@ -1,0 +1,63 @@
+<!--
+  과제 정의서 템플릿 (GET /api/templates/task-definition).
+  화면이 값을 채우고 바로 수정하게 하는 약속:
+    data-field="name|background|users|scope"  편집 영역. 값은 textContent로만 넣고 읽습니다(HTML 삽입 없음).
+    data-single                                  줄바꿈 없는 한 줄 항목.
+    data-placeholder="…"                         비었을 때 안내 문구.
+    data-count="필드"                           글자 수 표시 위치.
+    data-evidence="항목,항목"                    발언 근거 버튼. 업무 배경 항목 id: problem, current, users, impact, goal.
+  스타일은 .task-doc 안에서만 적용됩니다.
+-->
+<style>
+.task-doc{--doc-ink:#1f3350;--doc-muted:#6b7c93;--doc-line:#e3e8ef;--doc-accent:#345f96;position:relative;overflow:hidden;border:1px solid #d9e2ee;border-radius:14px;background:#fff;box-shadow:0 10px 30px #17335b0f;color:var(--doc-ink)}
+.task-doc-head{padding:26px 30px 22px;background:linear-gradient(150deg,#0b2d8e,#062372);color:#fff}
+.task-doc-kicker{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:1.6px;color:#cbdcff}
+.task-doc-title{display:block;margin-top:14px;font-size:26px;font-weight:700;line-height:1.4;letter-spacing:-.6px;color:#fff;border-radius:6px;padding:2px 6px;margin-left:-6px}
+.task-doc-title:hover{background:#ffffff14}.task-doc-title:focus{outline:2px solid #ffffff80;background:#ffffff1a}
+.task-doc-title:empty::before{content:attr(data-placeholder);color:#ffffff80}
+.task-doc-head .task-doc-count{color:#cbdcff}
+.task-doc-body{padding:8px 30px 10px}
+.task-doc-section{display:grid;grid-template-columns:44px minmax(0,1fr);gap:4px 14px;padding:22px 0;border-bottom:1px solid var(--doc-line)}
+.task-doc-section:last-child{border-bottom:0}
+.task-doc-num{grid-row:span 2;font:700 13px ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;color:var(--doc-accent);padding-top:3px}
+.task-doc-label{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.task-doc-label h4{margin:0;font-size:15px;font-weight:700}
+.task-doc-evidence{display:inline-flex;align-items:center;gap:5px;margin-left:auto;padding:5px 10px;border:1px solid #d6e2f2;border-radius:999px;background:#f5f9ff;color:var(--doc-accent);font-size:12px;font-weight:600;cursor:pointer}
+.task-doc-evidence::before{content:'“';font:700 15px/1 Georgia,serif;margin-top:4px}
+.task-doc-evidence:hover{background:#e9f1fc;border-color:#b8cde8}
+.task-doc-field{display:block;margin-top:10px;padding:12px 14px;border:1px dashed transparent;border-radius:8px;font-size:14px;line-height:1.9;color:#3d516b;white-space:pre-wrap;overflow-wrap:anywhere;min-height:48px;cursor:text}
+.task-doc-field:hover{border-color:#cad7e8;background:#fafcff}
+.task-doc-field:focus{outline:0;border:1px solid #7699c4;background:#fff;box-shadow:0 0 0 3px #426b9d14}
+.task-doc-field:empty::before{content:attr(data-placeholder);color:#9aa8ba}
+.task-doc-field[aria-invalid=true],.task-doc-title[aria-invalid=true]{border:1px solid #d9848f;background:#fff7f8}
+.task-doc-count{display:block;margin-top:6px;text-align:right;font-size:11px;color:var(--doc-muted)}
+.task-doc-count.over{color:#a02f3c;font-weight:600}
+.task-doc-foot{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin:0;max-width:none;padding:12px 30px 16px;font-size:12px;color:var(--doc-muted);background:#fafcff;border-top:1px solid var(--doc-line)}
+.task-doc-foot::before{content:'✎';color:var(--doc-accent)}
+@media(max-width:640px){.task-doc-head{padding:22px 20px}.task-doc-title{font-size:21px}.task-doc-body{padding:4px 20px 8px}.task-doc-section{grid-template-columns:1fr}.task-doc-num{grid-row:auto}.task-doc-foot{padding:12px 20px}}
+</style>
+<article class="task-doc" aria-label="과제 정의서">
+  <header class="task-doc-head">
+    <div class="task-doc-kicker">TASK DEFINITION</div>
+    <div class="task-doc-title" data-field="name" data-single data-placeholder="과제 이름을 입력하세요" role="textbox" aria-label="과제 이름"></div>
+    <span class="task-doc-count" data-count="name"></span>
+  </header>
+  <div class="task-doc-body">
+    <section class="task-doc-section">
+      <span class="task-doc-num">01</span>
+      <div class="task-doc-label"><h4>해결할 문제와 현재 업무 배경</h4><button type="button" class="task-doc-evidence" data-evidence="problem,current,impact">발언 근거</button></div>
+      <div><div class="task-doc-field" data-field="background" data-placeholder="무엇이 불편하고, 지금은 어떻게 일하는지 적어주세요." role="textbox" aria-multiline="true" aria-label="해결할 문제와 현재 업무 배경"></div><span class="task-doc-count" data-count="background"></span></div>
+    </section>
+    <section class="task-doc-section">
+      <span class="task-doc-num">02</span>
+      <div class="task-doc-label"><h4>사용자와 업무 담당자</h4><button type="button" class="task-doc-evidence" data-evidence="users">발언 근거</button></div>
+      <div><div class="task-doc-field" data-field="users" data-placeholder="누가 쓰고, 누가 요청·확인하는지 적어주세요." role="textbox" aria-multiline="true" aria-label="사용자와 업무 담당자"></div><span class="task-doc-count" data-count="users"></span></div>
+    </section>
+    <section class="task-doc-section">
+      <span class="task-doc-num">03</span>
+      <div class="task-doc-label"><h4>원하는 변화와 첫 과제 범위</h4><button type="button" class="task-doc-evidence" data-evidence="goal">발언 근거</button></div>
+      <div><div class="task-doc-field" data-field="scope" data-placeholder="해결 후 어떻게 달라지면 좋을지, 첫 버전 범위를 적어주세요." role="textbox" aria-multiline="true" aria-label="원하는 변화와 첫 과제 범위"></div><span class="task-doc-count" data-count="scope"></span></div>
+    </section>
+  </div>
+  <footer class="task-doc-foot">내용을 눌러 바로 수정할 수 있어요. 수정한 내용은 자동으로 저장됩니다.</footer>
+</article>
