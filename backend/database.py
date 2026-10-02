@@ -1,10 +1,10 @@
-"""SQLite persistence: each prompt is stored in normalized tables and assembled into the workspace state the API validates.
+"""PostgreSQL persistence: each prompt is stored in normalized tables and assembled into the workspace state the API validates.
 
 Only the latest version of everything is kept. Deleting a prompt removes all of its rows; LLM usage rows stay
 (with prompt_id cleared) so token totals by day and user remain correct.
 """
 import json
-import sqlite3
+
 import time
 import uuid
 from contextlib import contextmanager, nullcontext
@@ -18,66 +18,6 @@ KEEP_AGENT = object()
 LIFETIME = 30 * 24 * 60 * 60  # Anonymous pre-login workspaces only.
 AGENT_META = ('title', 'ready', 'nextCategories', 'remaining', 'deferred', 'lastTurn')
 
-SCHEMA = '''
-CREATE TABLE IF NOT EXISTS prompts (
-    prompt_id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    title TEXT NOT NULL DEFAULT '', stage INTEGER NOT NULL DEFAULT 1, task_type TEXT, question_index INTEGER NOT NULL DEFAULT 0,
-    agent_meta TEXT, survey_signature TEXT NOT NULL DEFAULT '', survey_done INTEGER NOT NULL DEFAULT 0,
-    survey_done_basis TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT);
-CREATE INDEX IF NOT EXISTS prompts_user ON prompts(user_id, updated_at);
-CREATE TABLE IF NOT EXISTS chat_messages (
-    prompt_id TEXT NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE, message_id TEXT NOT NULL,
-    seq INTEGER NOT NULL, role TEXT NOT NULL CHECK(role IN ('user','assistant')), content TEXT NOT NULL,
-    llm_request_id TEXT, created_at TEXT NOT NULL, PRIMARY KEY (prompt_id, message_id));
-CREATE TABLE IF NOT EXISTS background_items (
-    prompt_id TEXT NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE, category TEXT NOT NULL,
-    status TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '', evidence TEXT NOT NULL DEFAULT '[]',
-    updated_at TEXT NOT NULL, PRIMARY KEY (prompt_id, category));
-CREATE TABLE IF NOT EXISTS task_definitions (
-    prompt_id TEXT NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK(kind IN ('draft','confirmed')),
-    name TEXT NOT NULL, background TEXT NOT NULL, users TEXT NOT NULL, scope TEXT NOT NULL,
-    signature TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (prompt_id, kind));
-CREATE TABLE IF NOT EXISTS survey_topics (
-    prompt_id TEXT NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE, topic_id TEXT NOT NULL,
-    seq INTEGER NOT NULL, label TEXT NOT NULL, description TEXT NOT NULL, origin INTEGER NOT NULL DEFAULT 0,
-    empty_text TEXT, status TEXT, reason TEXT NOT NULL DEFAULT '', PRIMARY KEY (prompt_id, topic_id));
-CREATE TABLE IF NOT EXISTS survey_questions (
-    prompt_id TEXT NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE, question_id TEXT NOT NULL,
-    position INTEGER NOT NULL, topic_id TEXT NOT NULL, label TEXT NOT NULL, title TEXT NOT NULL, help TEXT NOT NULL, decision TEXT,
-    multi INTEGER NOT NULL, cards TEXT NOT NULL, basis TEXT NOT NULL, topic_status TEXT,
-    llm_request_id TEXT, created_at TEXT NOT NULL, PRIMARY KEY (prompt_id, question_id));
-CREATE TABLE IF NOT EXISTS survey_answers (
-    prompt_id TEXT NOT NULL, question_id TEXT NOT NULL, selected TEXT NOT NULL, custom TEXT NOT NULL,
-    updated_at TEXT NOT NULL, PRIMARY KEY (prompt_id, question_id),
-    FOREIGN KEY (prompt_id, question_id) REFERENCES survey_questions(prompt_id, question_id) ON DELETE CASCADE);
-CREATE TABLE IF NOT EXISTS prompt_documents (
-    prompt_id TEXT PRIMARY KEY REFERENCES prompts(prompt_id) ON DELETE CASCADE, content TEXT NOT NULL,
-    source TEXT NOT NULL CHECK(source IN ('generated','edited')), updated_at TEXT NOT NULL,
-    llm_request_id TEXT, spec TEXT);
-CREATE TABLE IF NOT EXISTS prompt_edit_turns (
-    turn_id TEXT NOT NULL, prompt_id TEXT NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE, base_revision INTEGER NOT NULL,
-    user_message TEXT NOT NULL, assistant_message TEXT NOT NULL DEFAULT '', before_text TEXT NOT NULL, after_text TEXT,
-    status TEXT NOT NULL CHECK(status IN ('generating','answered','proposed','accepted','rejected','failed','stale')),
-    decision_message TEXT NOT NULL DEFAULT '', llm_request_id TEXT REFERENCES llm_requests(request_id) ON DELETE SET NULL,
-    created_at TEXT NOT NULL, resolved_at TEXT, PRIMARY KEY (prompt_id,turn_id));
-CREATE INDEX IF NOT EXISTS prompt_edit_pending ON prompt_edit_turns(prompt_id,status);
-CREATE TABLE IF NOT EXISTS prompt_recommendations (
-    prompt_id TEXT NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL, PRIMARY KEY (prompt_id, user_id));
-CREATE TABLE IF NOT EXISTS llm_requests (
-    request_id TEXT PRIMARY KEY, user_id TEXT REFERENCES users(user_id) ON DELETE SET NULL,
-    prompt_id TEXT REFERENCES prompts(prompt_id) ON DELETE SET NULL,
-    step TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, reasoning_effort TEXT,
-    input_tokens INTEGER, output_tokens INTEGER, total_tokens INTEGER, cached_input_tokens INTEGER, reasoning_tokens INTEGER,
-    attempt INTEGER NOT NULL, status TEXT NOT NULL CHECK(status IN ('success','failed','cancelled')), error_type TEXT,
-    started_at TEXT NOT NULL, completed_at TEXT, duration_ms INTEGER);
-CREATE INDEX IF NOT EXISTS llm_requests_started ON llm_requests(started_at);
-CREATE INDEX IF NOT EXISTS llm_requests_user ON llm_requests(user_id, started_at);
-'''
 
 
 def timestamp():
@@ -97,67 +37,21 @@ def prompt_title(state, agent):
 
 
 class Database:
-    def __init__(self, path):
-        self.path = Path(path).resolve()
+    def __init__(self):
+        """Connections are configured by config.yaml, never an app.db path."""
 
     @contextmanager
     def connect(self):
-        connection = sqlite3.connect(self.path, timeout=5)
-        connection.row_factory = sqlite3.Row
-        connection.execute('PRAGMA foreign_keys=ON')
-        try:
-            with connection:
-                yield connection
-        finally:
-            connection.close()
+        from .pgstore import database
+        with database() as db:
+            yield db
 
     def initialize(self):
-        """Create tables. Accounts must exist first (Auth.initialize) for the foreign keys."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as db:
-            db.execute('PRAGMA journal_mode=WAL')
-            # Former one-per-browser store; kept only until its rows are moved into prompts.
-            db.execute('''CREATE TABLE IF NOT EXISTS workspaces (
-                token_hash TEXT PRIMARY KEY, state TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0,
-                updated_at TEXT NOT NULL, expires_at INTEGER NOT NULL)''')
-            columns = {row[1] for row in db.execute('PRAGMA table_info(workspaces)')}
-            if 'background_agent' not in columns:
-                db.execute('ALTER TABLE workspaces ADD COLUMN background_agent TEXT')
-            if 'user_id' not in columns:
-                db.execute('ALTER TABLE workspaces ADD COLUMN user_id TEXT')
+        from .pgstore import initialize
+        initialize()
 
     def create_tables(self):
-        with self.connect() as db:
-            db.executescript(SCHEMA)
-            # Columns added after the first release.
-            if 'decision' not in {row[1] for row in db.execute('PRAGMA table_info(survey_questions)')}:
-                db.execute('ALTER TABLE survey_questions ADD COLUMN decision TEXT')
-            if 'shared_at' not in {row[1] for row in db.execute('PRAGMA table_info(prompts)')}:
-                # Completed prompts are shared with everyone; earlier ones were made without that notice, so no backfill.
-                db.execute('ALTER TABLE prompts ADD COLUMN shared_at TEXT')
-            if 'sharing_enabled' not in {row[1] for row in db.execute('PRAGMA table_info(prompts)')}:
-                db.execute('ALTER TABLE prompts ADD COLUMN sharing_enabled INTEGER NOT NULL DEFAULT 0')
-                db.execute('UPDATE prompts SET sharing_enabled = 1 WHERE shared_at IS NOT NULL')
-            if 'library_hidden_at' not in {row[1] for row in db.execute('PRAGMA table_info(prompts)')}:
-                db.execute('ALTER TABLE prompts ADD COLUMN library_hidden_at TEXT')
-            if 'source_prompt_id' not in {row[1] for row in db.execute('PRAGMA table_info(prompts)')}:
-                db.execute('ALTER TABLE prompts ADD COLUMN source_prompt_id TEXT REFERENCES prompts(prompt_id) ON DELETE SET NULL')
-            db.execute('DROP INDEX IF EXISTS prompts_import_source')
-            db.execute("""CREATE TABLE IF NOT EXISTS personal_prompts (
-                prompt_id TEXT PRIMARY KEY REFERENCES prompts(prompt_id) ON DELETE CASCADE,
-                user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-                source_prompt_id TEXT REFERENCES prompts(prompt_id) ON DELETE SET NULL,
-                UNIQUE(user_id, source_prompt_id))""")
-            db.execute('INSERT OR IGNORE INTO personal_prompts SELECT prompt_id,user_id,source_prompt_id FROM prompts '
-                       'WHERE source_prompt_id IS NOT NULL AND sharing_enabled=0')
-            db.execute('CREATE INDEX IF NOT EXISTS prompts_shared ON prompts(shared_at) WHERE shared_at IS NOT NULL')
-            document_columns = {row[1] for row in db.execute('PRAGMA table_info(prompt_documents)')}
-            for column in ('llm_request_id', 'spec'):
-                if column not in document_columns:
-                    db.execute(f'ALTER TABLE prompt_documents ADD COLUMN {column} TEXT')
-            owned = db.execute('SELECT token_hash FROM workspaces WHERE user_id IS NOT NULL').fetchall()
-        for row in owned:
-            self._move_workspace(row['token_hash'])
+        self.initialize()
 
     # Former workspaces ---------------------------------------------------------------------------
 
@@ -218,7 +112,7 @@ class Database:
 
     def remove_from_library(self, prompt_id, user_id):
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             row = db.execute('SELECT completed_at FROM prompts WHERE prompt_id=? AND user_id=?', (prompt_id,user_id)).fetchone()
             if row is None:
                 raise APIError(404, '프롬프트를 찾을 수 없습니다.')
@@ -229,7 +123,7 @@ class Database:
 
     def delete_prompt(self, prompt_id, user_id):
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             if not db.execute('SELECT 1 FROM prompts WHERE prompt_id=? AND user_id=?', (prompt_id,user_id)).fetchone():
                 return False
             db.execute('DELETE FROM prompts WHERE prompt_id IN (SELECT prompt_id FROM personal_prompts WHERE source_prompt_id=? AND user_id=?)',
@@ -327,7 +221,10 @@ class Database:
         # Rows are upserted by key and removed when gone, so creation times of kept rows survive.
         def sync(table, key, rows, columns, keep=()):
             keys = [row[0] for row in rows]
-            db.execute(f'DELETE FROM {table} WHERE prompt_id = ? AND {key} NOT IN ({",".join("?" * len(keys))})', (prompt_id, *keys))
+            if keys:
+                db.execute(f'DELETE FROM {table} WHERE prompt_id = ? AND {key} NOT IN ({",".join("?" * len(keys))})', (prompt_id, *keys))
+            else:
+                db.execute(f'DELETE FROM {table} WHERE prompt_id = ?', (prompt_id,))
             updates = ', '.join(f'{column} = excluded.{column}' for column in columns[1:] if column not in keep)
             db.executemany(f'INSERT INTO {table} (prompt_id, {", ".join(columns)}) VALUES (?, {", ".join("?" * len(columns))}) '
                            f'ON CONFLICT (prompt_id, {key}) DO UPDATE SET {updates}', [(prompt_id, *row) for row in rows])
@@ -364,22 +261,22 @@ class Database:
         if not state['documentText']:
             db.execute('DELETE FROM prompt_documents WHERE prompt_id = ?', (prompt_id,))
         elif document:
-            db.execute('''INSERT OR REPLACE INTO prompt_documents (prompt_id, content, source, updated_at, llm_request_id, spec)
-                          VALUES (?, ?, 'generated', ?, ?, ?)''', (prompt_id, state['documentText'], now, document['llmRequestId'], dumps(document['spec'])))
+            db.execute('''INSERT INTO prompt_documents (prompt_id, content, source, updated_at, llm_request_id, spec)
+                          VALUES (?, ?, 'generated', ?, ?, ?) ON CONFLICT(prompt_id) DO UPDATE SET content=EXCLUDED.content,source=EXCLUDED.source,updated_at=EXCLUDED.updated_at,llm_request_id=EXCLUDED.llm_request_id,spec=EXCLUDED.spec''', (prompt_id, state['documentText'], now, document['llmRequestId'], dumps(document['spec'])))
         else:  # Ordinary saves and manual edits keep the record of how the document was generated.
             db.execute('''INSERT INTO prompt_documents (prompt_id, content, source, updated_at) VALUES (?, ?, ?, ?)
                           ON CONFLICT (prompt_id) DO UPDATE SET content = excluded.content, source = excluded.source,
-                          updated_at = excluded.updated_at WHERE content != excluded.content OR source != excluded.source''',
+                          updated_at = excluded.updated_at WHERE prompt_documents.content != excluded.content OR prompt_documents.source != excluded.source''',
                        (prompt_id, state['documentText'], 'edited' if state['manualEdited'] else 'generated', now))
         # Saving content never opts a private prompt into sharing. Reopening ends sharing.
-        db.execute('UPDATE prompts SET shared_at = CASE WHEN ? AND sharing_enabled THEN shared_at END, '
+        db.execute('UPDATE prompts SET shared_at = CASE WHEN ? AND sharing_enabled=1 THEN shared_at END, '
                    'sharing_enabled = CASE WHEN ? THEN sharing_enabled ELSE 0 END WHERE prompt_id = ?',
                    (state['stage'] == 3 and bool(state['documentText']),
                     state['stage'] == 3 and bool(state['documentText']), prompt_id))
 
     def confirm(self, prompt_id, user_id, revision):
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             row = db.execute('SELECT p.*, d.content FROM prompts p LEFT JOIN prompt_documents d '
                              'ON d.prompt_id=p.prompt_id WHERE p.prompt_id=? AND p.user_id=?', (prompt_id, user_id)).fetchone()
             if row is None:
@@ -392,7 +289,7 @@ class Database:
                 raise APIError(400, 'Agent의 수정안을 수정 또는 반려한 뒤 확정해주세요.')
             now = timestamp()
             db.execute('UPDATE prompts SET completed_at=COALESCE(completed_at, ?), updated_at=?, revision=revision+1, library_hidden_at=NULL, '
-                       'shared_at=CASE WHEN sharing_enabled THEN COALESCE(shared_at, ?) END WHERE prompt_id=?',
+                       'shared_at=CASE WHEN sharing_enabled=1 THEN COALESCE(shared_at, ?) END WHERE prompt_id=?',
                        (now, now, now, prompt_id))
         return self.load(prompt_id, user_id)
 
@@ -406,7 +303,7 @@ class Database:
 
     def set_sharing(self, prompt_id, user_id, enabled):
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             row = db.execute('SELECT p.stage, p.completed_at, d.content FROM prompts p LEFT JOIN prompt_documents d '
                              'ON d.prompt_id=p.prompt_id WHERE p.prompt_id=? AND p.user_id=?', (prompt_id, user_id)).fetchone()
             if row is None:
@@ -458,7 +355,7 @@ class Database:
     def import_shared(self, source_id, user_id):
         """Create one private, independent copy of the public document. Never copy private conversations."""
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             source = db.execute('SELECT p.user_id,p.library_hidden_at,d.spec FROM prompts p JOIN prompt_documents d ON d.prompt_id=p.prompt_id '
                                 'WHERE p.prompt_id=? AND p.shared_at IS NOT NULL AND p.completed_at IS NOT NULL', (source_id,)).fetchone()
             if source is None:
@@ -490,7 +387,7 @@ class Database:
     def open_personal(self, source_id, user_id):
         """Detach personal edits from the confirmed original, once per owner/source."""
         with self.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             original = self.load(source_id, user_id, connection=db)
             if original is None:
                 raise APIError(404, '프롬프트를 찾을 수 없습니다.')
@@ -510,7 +407,7 @@ class Database:
             db.execute('UPDATE prompts SET completed_at=? WHERE prompt_id=?', (now,prompt_id))
             db.execute('UPDATE prompt_documents SET spec=(SELECT spec FROM prompt_documents WHERE prompt_id=?) WHERE prompt_id=?',
                        (source_id,prompt_id))
-            columns = [row[1] for row in db.execute('PRAGMA table_info(prompt_edit_turns)') if row[1] != 'prompt_id']
+            columns = [row[0] for row in db.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='wiacoding' AND table_name='prompt_edit_turns' AND column_name NOT IN ('prompt_id','entry_seq') ORDER BY ordinal_position")]
             fields = ','.join(columns)
             db.execute(f'INSERT INTO prompt_edit_turns(prompt_id,{fields}) SELECT ?,{fields} FROM prompt_edit_turns WHERE prompt_id=?',
                        (prompt_id,source_id))
@@ -523,7 +420,7 @@ class Database:
             if owner is None:
                 return None
             if on:
-                db.execute('INSERT OR IGNORE INTO prompt_recommendations VALUES (?, ?, ?)', (prompt_id, viewer_id, timestamp()))
+                db.execute('INSERT INTO prompt_recommendations VALUES (?, ?, ?) ON CONFLICT DO NOTHING', (prompt_id, viewer_id, timestamp()))
             else:
                 db.execute('DELETE FROM prompt_recommendations WHERE prompt_id = ? AND user_id = ?', (prompt_id, viewer_id))
             return db.execute('SELECT COUNT(*) FROM prompt_recommendations WHERE prompt_id = ?', (prompt_id,)).fetchone()[0]

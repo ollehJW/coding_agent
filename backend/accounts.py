@@ -1,6 +1,6 @@
 """WiaNews account management rules adapted to the WiaCoding database."""
 import re
-import sqlite3
+import psycopg
 import unicodedata
 import uuid
 from fastapi import APIRouter, Depends, Request, Response
@@ -99,16 +99,16 @@ def account_router(store, auth):
             with database() as db:
                 # Serialize lookup + insertion so concurrent requests reuse the same names.
                 # Any account creation failure also rolls back new teams and job titles.
-                db.execute('BEGIN IMMEDIATE')
+                db.execute("SELECT pg_advisory_xact_lock(741902630)")
                 team_id = resolve_team_or_role(db, 'team', body.team_id, body.team_name)
                 role_id = resolve_team_or_role(db, 'role', body.role_id, body.role_name)
                 uid, stamp = str(uuid.uuid4()), now()
                 db.execute('''INSERT INTO users (user_id,employee_id,password_hash,full_name,team_id,role_id,is_admin,email,created_at,updated_at)
                               VALUES (?,?,?,?,?,?,?,?,?,?)''',
                            (uid, body.employee_id.lower(), hash_password(INITIAL_PASSWORD), body.full_name,
-                            team_id, role_id, int(body.is_admin), body.email, stamp, stamp))
+                            team_id, role_id, bool(body.is_admin), body.email, stamp, stamp))
                 return public_user(db.execute(USER_QUERY+' WHERE u.user_id=?', (uid,)).fetchone())
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             raise APIError(409, '이미 등록된 사번입니다.') from None
 
 
@@ -130,7 +130,7 @@ def account_router(store, auth):
                 tid = str(uuid.uuid4())
                 db.execute('INSERT INTO teams VALUES (?,?,?)', (tid, body.name, now()))
                 return {'team_id': tid, 'name': body.name}
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             raise APIError(409, '이미 등록된 팀입니다.') from None
 
 
@@ -140,7 +140,7 @@ def account_router(store, auth):
             raise APIError(400, '로그인 중인 본인의 관리자 권한은 해제할 수 없습니다.')
         try:
             with database() as db:
-                db.execute('BEGIN IMMEDIATE')
+                db.execute("SELECT pg_advisory_xact_lock(741902630)")
                 existing = db.execute('SELECT * FROM users WHERE user_id=?', (user_id,)).fetchone()
                 if not existing:
                     raise APIError(404, '계정을 찾을 수 없습니다.')
@@ -148,11 +148,11 @@ def account_router(store, auth):
                 role_id = resolve_team_or_role(db, 'role', body.role_id, body.role_name)
                 db.execute('''UPDATE users SET employee_id=?,full_name=?,team_id=?,role_id=?,is_admin=?,email=?,updated_at=?
                               WHERE user_id=?''', (body.employee_id.lower(), body.full_name, team_id, role_id,
-                              int(body.is_admin), body.email, now(), user_id))
-                if existing['is_admin'] != int(body.is_admin):
+                              bool(body.is_admin), body.email, now(), user_id))
+                if existing['is_admin'] != bool(body.is_admin):
                     db.execute('DELETE FROM sessions WHERE user_id=?', (user_id,))
                 return public_user(db.execute(USER_QUERY+' WHERE u.user_id=?', (user_id,)).fetchone())
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             raise APIError(409, '이미 등록된 사번입니다.') from None
 
 
@@ -164,7 +164,7 @@ def account_router(store, auth):
             with database() as db:
                 if db.execute('DELETE FROM users WHERE user_id=?', (user_id,)).rowcount != 1:
                     raise APIError(404, '계정을 찾을 수 없습니다.')
-        except sqlite3.IntegrityError:
+        except psycopg.IntegrityError:
             raise APIError(409, '연결된 데이터로 인해 계정을 삭제할 수 없습니다.') from None
         return {'ok': True}
 
@@ -172,10 +172,10 @@ def account_router(store, auth):
     @router.post('/admin/users/{user_id}/reset-password')
     def reset_password(user_id: str, user=Depends(admin_user)):
         with database() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             if not db.execute('SELECT 1 FROM users WHERE user_id=?', (user_id,)).fetchone():
                 raise APIError(404, '계정을 찾을 수 없습니다.')
-            db.execute('''UPDATE users SET password_hash=?,must_change_password=1,
+            db.execute('''UPDATE users SET password_hash=?,must_change_password=TRUE,
                           password_changed_at=NULL,updated_at=? WHERE user_id=?''',
                        (hash_password(INITIAL_PASSWORD), now(), user_id))
             db.execute('DELETE FROM sessions WHERE user_id=?', (user_id,))

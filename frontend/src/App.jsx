@@ -1,3 +1,4 @@
+import { PlatformReturnLink, PlatformHomeLink } from './PlatformNavigation.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, CheckCircle2, UserRound, CodeXml, FileText, FolderHeart, LogOut, Users } from 'lucide-react';
 import { answerBasis, answerText, contextSteps } from './content.js';
@@ -322,7 +323,7 @@ export default function App({ user, onLogout }) {
       <div className="sidebar-bottom"><div className="lab-profile"><span className="lab-avatar" aria-hidden="true"><UserRound size={20} /></span><div><strong>{user.full_name}</strong><small>{user.team_name}</small></div><i /></div><button className="sidebar-logout" disabled={busy} onClick={() => { if (latest.current === saved.current || window.confirm('저장되지 않은 변경이 있습니다. 로그아웃할까요?')) onLogout(); }}><LogOut size={15} />로그아웃</button></div>
     </aside>
     <div className="main-shell">
-      <div className="topbar"><div className="breadcrumb">WiaCanDX <span>/</span> WiaCoding <span>/</span>{view === 'definition' && <><button className="text-button crumb-link" disabled={busy} onClick={confirmed || personalWorkspace ? goPersonal : goHome}>{confirmed || personalWorkspace ? '나만의 프롬프트' : '진행 중인 프롬프트'}</button><span>/</span></>}<strong>{view === 'shared' ? '모두의 프롬프트' : view === 'personal' ? '나만의 프롬프트' : view === 'home' ? '개발 프롬프트 만들기' : steps[stage - 1][0]}</strong></div></div>
+      <div className="topbar"><div className="breadcrumb"><PlatformHomeLink/> <span aria-hidden="true">&gt;</span> WiaCoding <span aria-hidden="true">&gt;</span>{view === 'definition' && <><button className="text-button crumb-link" disabled={busy} onClick={confirmed || personalWorkspace ? goPersonal : goHome}>{confirmed || personalWorkspace ? '나만의 프롬프트' : '진행 중인 프롬프트'}</button><span aria-hidden="true">&gt;</span></>}<strong>{view === 'shared' ? '모두의 프롬프트' : view === 'personal' ? '나만의 프롬프트' : view === 'home' ? '개발 프롬프트 만들기' : steps[stage - 1][0]}</strong></div><PlatformReturnLink/></div>
       <main id="main-content">
         {apiError && <div className="error" role="alert">{apiError} <button className="text-button" onClick={() => persist(latest.current)}>저장 재시도</button></div>}
         <fieldset className="workspace-fields" disabled={busy} aria-busy={busy}>

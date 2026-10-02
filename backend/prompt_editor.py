@@ -77,7 +77,7 @@ class EditStore:
             db.execute("UPDATE prompt_edit_turns SET status='failed', assistant_message=?, resolved_at=? "
                        "WHERE prompt_id=? AND status='generating' AND created_at<?",
                        ('응답이 중단되었습니다. 다시 요청해주세요.', timestamp(), prompt_id, cutoff))
-            return list(reversed(db.execute('SELECT * FROM prompt_edit_turns WHERE prompt_id=? ORDER BY rowid DESC LIMIT 50',
+            return list(reversed(db.execute('SELECT * FROM prompt_edit_turns WHERE prompt_id=? ORDER BY entry_seq DESC LIMIT 50',
                                              (prompt_id,)).fetchall()))
 
     def public(self, row, include_diff=False):
@@ -97,15 +97,15 @@ class EditStore:
             if not db.execute('SELECT 1 FROM prompts WHERE prompt_id=?'+visibility, (prompt_id,)).fetchone():
                 raise APIError(404, '공유된 프롬프트를 찾을 수 없습니다.')
             status_filter = '' if conversation else "AND status='accepted' "
-            rows = db.execute('SELECT rowid AS cursor,* FROM prompt_edit_turns WHERE prompt_id=? ' + status_filter +
-                              'AND rowid<? ORDER BY rowid DESC LIMIT 21', (prompt_id,before or 9223372036854775807)).fetchall()
+            rows = db.execute('SELECT entry_seq AS cursor,* FROM prompt_edit_turns WHERE prompt_id=? ' + status_filter +
+                              'AND entry_seq<? ORDER BY entry_seq DESC LIMIT 21', (prompt_id,before or 9223372036854775807)).fetchall()
         shown = reversed(rows[:20]) if conversation else rows[:20]
         return {'turns': [self.public(row,include_diff=not conversation) for row in shown],
                 'nextCursor': rows[19]['cursor'] if len(rows)>20 else None}
 
     def start(self, prompt_id, user_id, revision, turn_id, message):
         with self.database.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             current = self.database.load(prompt_id, user_id, connection=db)
             if current is None:
                 raise APIError(404, '프롬프트를 찾을 수 없습니다.')
@@ -138,7 +138,7 @@ class EditStore:
 
     def finish(self, prompt_id, user_id, turn_id, message, after):
         with self.database.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             row = db.execute('SELECT * FROM prompt_edit_turns WHERE prompt_id=? AND turn_id=?', (prompt_id, turn_id)).fetchone()
             current = self.database.load(prompt_id, user_id, connection=db)
             if not row or not current:
@@ -158,7 +158,7 @@ class EditStore:
 
     def decide(self, prompt_id, user_id, turn_id, revision, decision):
         with self.database.connect() as db:
-            db.execute('BEGIN IMMEDIATE')
+            db.execute("SELECT pg_advisory_xact_lock(741902630)")
             current = self.database.load(prompt_id,user_id,connection=db)
             if current is None:
                 raise APIError(404, '프롬프트를 찾을 수 없습니다.')

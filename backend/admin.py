@@ -29,8 +29,8 @@ FIELDS = '''p.prompt_id,p.user_id,p.title,p.stage,p.created_at,p.updated_at,p.co
 USAGE = '''COUNT(*) AS calls, COALESCE(SUM(input_tokens),0) AS input_tokens,
  COALESCE(SUM(output_tokens),0) AS output_tokens, COALESCE(SUM(total_tokens),0) AS total_tokens,
  COALESCE(SUM(cached_input_tokens),0) AS cached_tokens,
- COALESCE(SUM(total_tokens IS NULL),0) AS unknown_usage,
- COALESCE(SUM(status='failed'),0) AS failed, COALESCE(SUM(status='cancelled'),0) AS cancelled,
+ COALESCE(SUM((total_tokens IS NULL)::int),0) AS unknown_usage,
+ COALESCE(SUM((status='failed')::int),0) AS failed, COALESCE(SUM((status='cancelled')::int),0) AS cancelled,
  AVG(duration_ms) AS average_duration_ms'''
 
 
@@ -43,21 +43,21 @@ def admin_router(database, auth):
         with database.connect() as db:
             db.execute('BEGIN')
             snapshot = dict(db.execute('''SELECT COUNT(*) AS prompts,
-              COALESCE(SUM(pp.prompt_id IS NOT NULL),0) AS personal,
-              COALESCE(SUM(pp.prompt_id IS NULL AND p.completed_at IS NULL),0) AS in_progress,
-              COALESCE(SUM(pp.prompt_id IS NULL AND p.completed_at IS NOT NULL),0) AS confirmed,
-              COALESCE(SUM(p.shared_at IS NOT NULL),0) AS shared ''' + PROMPTS).fetchone())
-            snapshot['users'] = db.execute('SELECT COUNT(*) FROM users WHERE is_active=1 AND is_admin=0').fetchone()[0]
-            where = " WHERE date(started_at,'+9 hours') BETWEEN ? AND ?"
+              COALESCE(SUM((pp.prompt_id IS NOT NULL)::int),0) AS personal,
+              COALESCE(SUM((pp.prompt_id IS NULL AND p.completed_at IS NULL)::int),0) AS in_progress,
+              COALESCE(SUM((pp.prompt_id IS NULL AND p.completed_at IS NOT NULL)::int),0) AS confirmed,
+              COALESCE(SUM((p.shared_at IS NOT NULL)::int),0) AS shared ''' + PROMPTS).fetchone())
+            snapshot['users'] = db.execute('SELECT COUNT(*) FROM users WHERE is_active=TRUE AND is_admin=FALSE').fetchone()[0]
+            where = " WHERE to_char((started_at::timestamptz AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD') BETWEEN ? AND ?"
             usage = dict(db.execute('SELECT '+USAGE+' FROM llm_requests'+where, (begin, finish)).fetchone())
             activity = [dict(r) for r in db.execute('''SELECT u.full_name,u.employee_id,t.name AS team_name,
-                (SELECT COUNT(*) FROM prompts p WHERE p.user_id=u.user_id AND date(p.created_at,'+9 hours') BETWEEN ? AND ?) AS prompts,
-                (SELECT COUNT(*) FROM llm_requests l WHERE l.user_id=u.user_id AND date(l.started_at,'+9 hours') BETWEEN ? AND ?) AS calls,
+                (SELECT COUNT(*) FROM prompts p WHERE p.user_id=u.user_id AND to_char((p.created_at::timestamptz AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD') BETWEEN ? AND ?) AS prompts,
+                (SELECT COUNT(*) FROM llm_requests l WHERE l.user_id=u.user_id AND to_char((l.started_at::timestamptz AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD') BETWEEN ? AND ?) AS calls,
                 u.last_login_at FROM users u JOIN teams t ON t.team_id=u.team_id
-                WHERE u.is_admin=0 ORDER BY calls DESC,prompts DESC,u.full_name LIMIT 100''',(begin,finish,begin,finish))]
+                WHERE u.is_admin=FALSE ORDER BY calls DESC,prompts DESC,u.full_name LIMIT 100''',(begin,finish,begin,finish))]
             errors = [dict(r) for r in db.execute('''SELECT l.request_id,l.started_at,l.step,l.model,l.status,l.error_type,u.full_name
                 FROM llm_requests l LEFT JOIN users u ON u.user_id=l.user_id
-                WHERE date(l.started_at,'+9 hours') BETWEEN ? AND ? AND l.status!='success'
+                WHERE to_char((l.started_at::timestamptz AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD') BETWEEN ? AND ? AND l.status!='success'
                 ORDER BY l.started_at DESC LIMIT 50''',(begin,finish))]
         return dict(snapshot=snapshot,usage=usage,activity=activity,errors=errors)
 
@@ -68,7 +68,7 @@ def admin_router(database, auth):
                       'shared':'p.shared_at IS NOT NULL','personal':'pp.prompt_id IS NOT NULL'}
         if kind not in conditions:
             raise APIError(400, '목록 구분을 확인해주세요.')
-        where = ' WHERE '+conditions[kind]+" AND instr(lower(p.title||' '||u.full_name||' '||u.employee_id||' '||t.name),lower(?))>0"
+        where = ' WHERE '+conditions[kind]+" AND strpos(lower(p.title||' '||u.full_name||' '||u.employee_id||' '||t.name),lower(?))>0"
         with database.connect() as db:
             db.execute('BEGIN')
             total = db.execute('SELECT COUNT(*) '+PROMPTS+where,(q.strip(),)).fetchone()[0]
@@ -121,7 +121,7 @@ def admin_router(database, auth):
         begin,finish=period(start,end)
         if status not in ('','success','failed','cancelled'):
             raise APIError(400,'호출 상태를 확인해주세요.')
-        where=" WHERE date(l.started_at,'+9 hours') BETWEEN ? AND ?"
+        where=" WHERE to_char((l.started_at::timestamptz AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD') BETWEEN ? AND ?"
         params=[begin,finish]
         for column,value in [('user_id',user_id),('model',model),('status',status)]:
             if value:
@@ -131,8 +131,8 @@ def admin_router(database, auth):
             db.execute('BEGIN')
             summary=dict(db.execute('SELECT '+USAGE+join+where,params).fetchone())
             groups={}
-            for key,fields in [('models','l.provider,l.model'),('users',"COALESCE(u.full_name,'삭제된 계정') AS full_name,l.user_id"),('daily',"date(l.started_at,'+9 hours') AS day")]:
-                grouping={'models':'l.provider,l.model','users':'l.user_id','daily':"date(l.started_at,'+9 hours')"}[key]
+            for key,fields in [('models','l.provider,l.model'),('users',"COALESCE(u.full_name,'삭제된 계정') AS full_name,l.user_id"),('daily',"to_char((l.started_at::timestamptz AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD') AS day")]:
+                grouping={'models':'l.provider,l.model','users':'l.user_id,u.full_name','daily':"to_char((l.started_at::timestamptz AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD')"}[key]
                 groups[key]=[dict(r) for r in db.execute('SELECT '+fields+','+USAGE+join+where+' GROUP BY '+grouping+' ORDER BY '+('day' if key=='daily' else 'total_tokens DESC'),params)]
             rows=[dict(r) for r in db.execute('SELECT l.*,u.full_name'+join+where+' ORDER BY l.started_at DESC,l.request_id LIMIT 50 OFFSET ?',(*params,offset))]
             options={'users':[dict(r) for r in db.execute('SELECT user_id,full_name,employee_id FROM users ORDER BY full_name')],

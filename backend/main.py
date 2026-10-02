@@ -24,12 +24,12 @@ from .accounts import account_router
 from .admin import admin_router
 from .llm_client import ConfigurationError, InvalidLLMResponse, usage_context
 from openai import APIConnectionError, APIStatusError, APITimeoutError, RateLimitError
-from .config import database_path
+from .config import load_environment
 from .content import CONTEXT_STEPS, answer_text
 from .database import Database, workspace
 from .state import APIError, initial_state, validate_state, ready_for_prompt
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent / 'app.db'
+
 MAX_BODY = 512 * 1024
 
 
@@ -128,8 +128,8 @@ class APIMiddleware:
         await self.app(scope, receive, send_headers)
 
 
-def create_app(db_path=None, secure_cookie=None):
-    database = Database(db_path or database_path())
+def create_app(secure_cookie=None):
+    database = Database()
     secure = os.environ.get('COOKIE_SECURE', '').lower() == 'true' if secure_cookie is None else secure_cookie
     auth = Auth(database, secure)
     signed_in = Depends(auth.ready_user)
@@ -143,6 +143,12 @@ def create_app(db_path=None, secure_cookie=None):
         yield
 
     app = FastAPI(title='WiaCoding API', version='1.0.0', lifespan=lifespan)
+
+    @app.get('/api/platform-auth')
+    def platform_auth():
+        from backend.pgstore import settings
+        return {'platform_origin': settings()['auth']['platform_origin']}
+
     locks = WeakValueDictionary()
     capacity = asyncio.Semaphore(4)
     prefetcher = survey.Prefetcher()

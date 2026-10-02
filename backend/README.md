@@ -1,3 +1,5 @@
+> 2026-10-02: PostgreSQL 및 AX for Works 통합 로그인으로 전환했습니다. 현재 DB 설정·이관·운영 절차는 [wiacoding PostgreSQL 가이드](../POSTGRESQL.md)를 따르세요. 아래 SQLite/app.db 및 서비스별 로그인 설명은 전환 전 기록입니다.
+
 # WiaCoding FastAPI backend
 
 Python 3.12 이상, FastAPI, Uvicorn 및 Python 내장 sqlite3를 사용합니다. 백엔드 실행에는 Node.js가 필요하지 않습니다.
