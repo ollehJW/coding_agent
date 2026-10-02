@@ -10,7 +10,9 @@ import { resolve, sep, extname } from 'node:path';
 const root = await realpath(fileURLToPath(new URL('./dist', import.meta.url)));
 const target = new URL(process.env.BACKEND_ORIGIN || 'http://127.0.0.1:9901');
 if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(target.hostname)) throw new Error('Backend must be local HTTP');
-const options = { cert: readFileSync(process.env.TLS_CERT), key: readFileSync(process.env.TLS_KEY), minVersion: 'TLSv1.2' };
+const protocol = process.env.FRONTEND_PROTOCOL || 'https';
+if (!['http', 'https'].includes(protocol)) throw new Error('Invalid frontend protocol');
+const options = protocol === 'https' ? { cert: readFileSync(process.env.TLS_CERT), key: readFileSync(process.env.TLS_KEY), minVersion: 'TLSv1.2' } : {};
 const mime = { '.mp4': 'video/mp4', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.ppt': 'application/vnd.ms-powerpoint', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 const hop = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 function withoutHop(headers) {
@@ -23,7 +25,7 @@ function error(res, status, message) {
   res.end(message);
 }
 
-const server = https.createServer(options, async (req, res) => {
+const server = (protocol === 'https' ? https : http).createServer(options, async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000');
   let pathname;
@@ -66,5 +68,5 @@ const server = https.createServer(options, async (req, res) => {
 });
 server.requestTimeout = 200000;
 const port = Number(process.env.FRONTEND_PORT || 9902);
-server.listen(port, process.env.FRONTEND_HOST || '0.0.0.0', () => console.log(`WiaCoding HTTPS frontend listening on ${port}`));
+server.listen(port, process.env.FRONTEND_HOST || '0.0.0.0', () => console.log(`WiaCoding ${protocol.toUpperCase()} frontend listening on ${port}`));
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 30000).unref(); });
