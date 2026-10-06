@@ -1,7 +1,6 @@
-// Add the final files to frontend/public, then set their public URLs here.
-// Example: videoUrl: '/media/WiaCoding_intro.mp4', guideUrl: '/guides/WiaCoding-guide.pptx'
+// Guide source: /data/wiacoding/media; copy into frontend/public/media before builds.
 export const introResources = {
   videoUrl: '/media/WiaCoding_intro.mp4',
-  guideUrl: null,
-  guideFilename: 'WiaCoding-사용-가이드.pptx',
+  guideUrl: '/media/WIACoding_Guide.pdf',
+  guideFilename: 'WIACoding_Guide.pdf',
 };

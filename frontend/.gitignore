@@ -1,3 +1,6 @@
 node_modules/
 dist/
 test-results/
+
+# Guide PDF is managed in /data/wiacoding/media.
+/public/media/WIACoding_Guide.pdf
