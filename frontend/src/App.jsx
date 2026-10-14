@@ -1,3 +1,4 @@
+import AXAccount from './AXAccount';
 import { PlatformReturnLink, PlatformHomeLink } from './PlatformNavigation.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, CheckCircle2, UserRound, CodeXml, FileText, FolderHeart, LogOut, Users } from 'lucide-react';
@@ -320,8 +321,7 @@ export default function App({ user, onLogout }) {
         <button className={view === 'shared' ? 'active' : ''} aria-current={view === 'shared' ? 'page' : undefined} disabled={busy} onClick={() => setView('shared')}><Users size={18} />모두의 프롬프트</button>
       </nav>
       <div className="lab-note"><strong>작은 아이디어가<br />업무의 변화를 만듭니다.</strong><p>처음 만드는 분도<br />차근차근 시작할 수 있도록.</p></div>
-      <div className="sidebar-bottom"><div className="lab-profile"><span className="lab-avatar" aria-hidden="true"><UserRound size={20} /></span><div><strong>{user.full_name}</strong><small>{user.team_name}</small></div><i /></div><button className="sidebar-logout" disabled={busy} onClick={() => { if (latest.current === saved.current || window.confirm('저장되지 않은 변경이 있습니다. 로그아웃할까요?')) onLogout(); }}><LogOut size={15} />로그아웃</button></div>
-    </aside>
+      <AXAccount name={user.full_name} team={user.team_name} admin={false} disabled={busy} onLogout={() => { if (latest.current === saved.current || window.confirm('저장되지 않은 변경이 있습니다. 로그아웃할까요?')) onLogout(); }}/></aside>
     <div className="main-shell">
       <div className="topbar"><div className="breadcrumb"><PlatformHomeLink/> <span aria-hidden="true">&gt;</span> WiaCoding <span aria-hidden="true">&gt;</span>{view === 'definition' && <><button className="text-button crumb-link" disabled={busy} onClick={confirmed || personalWorkspace ? goPersonal : goHome}>{confirmed || personalWorkspace ? '나만의 프롬프트' : '진행 중인 프롬프트'}</button><span aria-hidden="true">&gt;</span></>}<strong>{view === 'shared' ? '모두의 프롬프트' : view === 'personal' ? '나만의 프롬프트' : view === 'home' ? '개발 프롬프트 만들기' : steps[stage - 1][0]}</strong></div><PlatformReturnLink/></div>
       <main id="main-content">
