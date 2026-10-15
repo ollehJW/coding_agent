@@ -12,7 +12,7 @@ const target = new URL(process.env.BACKEND_ORIGIN || 'http://127.0.0.1:9901');
 if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(target.hostname)) throw new Error('Backend must be local HTTP');
 const protocol = process.env.FRONTEND_PROTOCOL || 'https';
 if (!['http', 'https'].includes(protocol)) throw new Error('Invalid frontend protocol');
-const options = protocol === 'https' ? { cert: readFileSync(process.env.TLS_CERT), key: readFileSync(process.env.TLS_KEY), minVersion: 'TLSv1.2' } : {};
+const options = protocol === 'https' ? { cert: readFileSync(process.env.TLS_CERT), key: readFileSync(process.env.TLS_KEY), minVersion: 'TLSv1.2', maxVersion: 'TLSv1.3', honorCipherOrder: true, ciphers: 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-RSA-AES128-GCM-SHA256' } : {};
 const mime = { '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.ppt': 'application/vnd.ms-powerpoint', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 const hop = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 function withoutHop(headers) {
@@ -68,5 +68,5 @@ const server = (protocol === 'https' ? https : http).createServer(options, async
 });
 server.requestTimeout = 200000;
 const port = Number(process.env.FRONTEND_PORT || 9902);
-server.listen(port, process.env.FRONTEND_HOST || '0.0.0.0', () => console.log(`WiaCoding ${protocol.toUpperCase()} frontend listening on ${port}`));
+server.listen(port, (protocol === 'http' ? '127.0.0.1' : (process.env.FRONTEND_HOST || '0.0.0.0')), () => console.log(`WiaCoding ${protocol.toUpperCase()} frontend listening on ${port}`));
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 30000).unref(); });
